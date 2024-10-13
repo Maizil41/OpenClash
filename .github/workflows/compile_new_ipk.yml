@@ -1,3 +1,4 @@
+
 name: Compile The New Version OpenClash
 
 on: 
@@ -23,8 +24,8 @@ jobs:
       - name: New Version
         id: version
         run: |
-          echo "version=$(grep 'PKG_VERSION:=' ./luci-app-openclash/Makefile | awk -F '=' '{print $2}')" >> $GITHUB_OUTPUT
-          echo "New Version: $(grep 'PKG_VERSION:=' ./luci-app-openclash/Makefile | awk -F '=' '{print $2}')"
+          echo "version=$(grep 'PKG_VERSION:=' ./luci-app-openclash/Makefile |awk -F '=' '{print $2}')" >> $GITHUB_OUTPUT
+          echo "New Version: $(grep 'PKG_VERSION:=' ./luci-app-openclash/Makefile |awk -F '=' '{print $2}')"
 
       - name: Clone Repository
         uses: actions/checkout@v4
@@ -34,8 +35,8 @@ jobs:
       - name: Current Version
         id: current_version
         run: |
-          echo "version=$(sed -n 1p ./${{ github.ref_name }}/version | awk -F '-' '{print $1}' | awk -F 'v' '{print $2}')" >> $GITHUB_OUTPUT
-          echo "Current Version: $(sed -n 1p ./${{ github.ref_name }}/version | awk -F '-' '{print $1}' | awk -F 'v' '{print $2}')"
+          echo "version=$(sed -n 1p ./${{ github.ref_name }}/version |awk -F '-' '{print $1}' |awk -F 'v' '{print $2}')" >> $GITHUB_OUTPUT
+          echo "Current Version: $(sed -n 1p ./${{ github.ref_name }}/version |awk -F '-' '{print $1}' |awk -F 'v' '{print $2}')"
 
   Compile:
     runs-on: ubuntu-latest
@@ -52,29 +53,21 @@ jobs:
           DEBIAN_FRONTEND: noninteractive
         run: |
           sudo apt-get update
-          sudo apt-get -y install curl git tar build-essential libncurses5-dev gawk zlib1g-dev
-
-      - name: Cache OpenWrt SDK
-        uses: actions/cache@v2
-        with:
-          path: ./tmp/SDK
-          key: ${{ runner.os }}-openwrt-sdk-${{ hashFiles('**/Makefile') }}
+          sudo apt-get -y install curl git tar
 
       - name: Install OpenWrt SDK
         run: |
-          if [ ! -d "../tmp/SDK" ]; then
-            cd ..
-            mkdir tmp
-            curl -SLk --connect-timeout 30 --retry 5 "https://downloads.openwrt.org/releases/21.02.1/targets/ar71xx/generic/openwrt-sdk-21.02.1-ar71xx-generic_gcc-8.4.0_musl.Linux-x86_64.tar.xz" -o "./tmp/SDK.tar.xz"
-            cd ./tmp
-            tar xjf SDK.tar.xz
-            mv "openwrt-sdk-21.02.1-ar71xx-generic_gcc-8.4.0_musl.Linux-x86_64" "SDK"
-          fi
+          cd ..
+          mkdir tmp
+          curl -SLk --connect-timeout 30 --retry 2 "https://archive.openwrt.org/chaos_calmer/15.05.1/ar71xx/generic/OpenWrt-SDK-15.05.1-ar71xx-generic_gcc-4.8-linaro_uClibc-0.9.33.2.Linux-x86_64.tar.bz2" -o "./tmp/SDK.tar.bz2"
+          cd \tmp
+          tar xjf SDK.tar.bz2
+          mv "OpenWrt-SDK-15.05.1-ar71xx-generic_gcc-4.8-linaro_uClibc-0.9.33.2.Linux-x86_64" "SDK"
 
       - name: Copy OpenClash Source Codes
         run: |
           cd ..
-          mkdir -p tmp/SDK/package/luci-app-openclash
+          mkdir tmp/SDK/package/luci-app-openclash
           cp -rf "./OpenClash/luci-app-openclash/." "./tmp/SDK/package/luci-app-openclash/"
 
       - name: Compile po2lmo
@@ -90,6 +83,14 @@ jobs:
           cd ..
           cd tmp/SDK
           make package/luci-app-openclash/compile V=99
+
+      - name: Send Message to Telegram
+        run: |
+          IPK_PATH="./tmp/SDK/bin/ar71xx/packages/base/luci-app-openclash_${{ needs.Get-Version.outputs.version }}-beta_all.ipk"
+          MESSAGE="New IPK created: ${IPK_PATH}"
+          curl -s -X POST "https://api.telegram.org/bot${{ secrets.TELEGRAM_TOKEN }}/sendMessage" \
+               -d "chat_id=${{ secrets.TELEGRAM_CHAT_ID }}" \
+               -d "text=${MESSAGE}"
 
       - name: Switch OpenClash Repository to Package
         uses: actions/checkout@v4
@@ -107,19 +108,9 @@ jobs:
           sed -i -E "s/OpenClash\/releases\/tag\/v(.*)-beta/OpenClash\/releases\/tag\/v${{ needs.Get-Version.outputs.version }}-beta/g" ./OpenClash/${{ github.ref_name }}/README.md
           sed -i -E "s/source code-v(.*)--beta-green/source code-v${{ needs.Get-Version.outputs.version }}--beta-green/g" ./OpenClash/${{ github.ref_name }}/README.md
           sed -i -E "s/New Release-v(.*)--beta-orange/New Release-v${{ needs.Get-Version.outputs.version }}--beta-orange/g" ./OpenClash/${{ github.ref_name }}/README.md
-          cd ./OpenClash
+          cd \OpenClash
           git config user.name 'github-actions[bot]'
           git config user.email 'github-actions[bot]@users.noreply.github.com'
           git add .
           git commit -m "Auto Release: v${{ needs.Get-Version.outputs.version }}-beta"
           git push
-
-      - name: Create GitHub Release
-        uses: actions/create-release@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.TOKEN }}
-        with:
-          tag_name: v${{ needs.Get-Version.outputs.version }}-beta
-          release_name: OpenClash v${{ needs.Get-Version.outputs.version }}-beta
-          draft: false
-          prerelease: true
