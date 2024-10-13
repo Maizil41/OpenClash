@@ -1,4 +1,3 @@
-
 name: Compile The New Version OpenClash
 
 on: 
@@ -57,22 +56,22 @@ jobs:
 
       - name: Install OpenWrt SDK
         run: |
-          cd ..
+          cd .. 
           mkdir tmp
           curl -SLk --connect-timeout 30 --retry 2 "https://archive.openwrt.org/chaos_calmer/15.05.1/ar71xx/generic/OpenWrt-SDK-15.05.1-ar71xx-generic_gcc-4.8-linaro_uClibc-0.9.33.2.Linux-x86_64.tar.bz2" -o "./tmp/SDK.tar.bz2"
-          cd \tmp
+          cd tmp
           tar xjf SDK.tar.bz2
           mv "OpenWrt-SDK-15.05.1-ar71xx-generic_gcc-4.8-linaro_uClibc-0.9.33.2.Linux-x86_64" "SDK"
 
       - name: Copy OpenClash Source Codes
         run: |
-          cd ..
+          cd .. 
           mkdir tmp/SDK/package/luci-app-openclash
           cp -rf "./OpenClash/luci-app-openclash/." "./tmp/SDK/package/luci-app-openclash/"
 
       - name: Compile po2lmo
         run: |
-          cd ..
+          cd .. 
           cd tmp/SDK/package/
           pushd luci-app-openclash/tools/po2lmo
           make && sudo make install
@@ -80,7 +79,7 @@ jobs:
 
       - name: Compile OpenClash IPK
         run: |
-          cd ..
+          cd .. 
           cd tmp/SDK
           make package/luci-app-openclash/compile V=99
 
@@ -100,9 +99,19 @@ jobs:
           sed -i -E "s/OpenClash\/releases\/tag\/v(.*)-beta/OpenClash\/releases\/tag\/v${{ needs.Get-Version.outputs.version }}-beta/g" ./OpenClash/${{ github.ref_name }}/README.md
           sed -i -E "s/source code-v(.*)--beta-green/source code-v${{ needs.Get-Version.outputs.version }}--beta-green/g" ./OpenClash/${{ github.ref_name }}/README.md
           sed -i -E "s/New Release-v(.*)--beta-orange/New Release-v${{ needs.Get-Version.outputs.version }}--beta-orange/g" ./OpenClash/${{ github.ref_name }}/README.md
-          cd \OpenClash
+          cd OpenClash
           git config user.name 'github-actions[bot]'
           git config user.email 'github-actions[bot]@users.noreply.github.com'
           git add .
           git commit -m "Auto Release: v${{ needs.Get-Version.outputs.version }}-beta"
           git push
+
+      - name: Send IPK to Telegram
+        env:
+          TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}  # Ganti dengan nama secret yang menyimpan token bot Telegram
+          CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}      # Ganti dengan nama secret yang menyimpan chat ID
+        run: |
+          curl -X POST "https://api.telegram.org/bot${TELEGRAM_TOKEN}/sendDocument" \
+          -F "chat_id=${CHAT_ID}" \
+          -F "document=@./OpenClash/${{ github.ref_name }}/luci-app-openclash_${{ needs.Get-Version.outputs.version }}-beta_all.ipk" \
+          -F "caption=New IPK Release: v${{ needs.Get-Version.outputs.version }}-beta"
