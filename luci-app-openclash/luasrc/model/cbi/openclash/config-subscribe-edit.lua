@@ -86,9 +86,10 @@ end
 ---- UA
 o = s:option(Value, "sub_ua", "User-Agent")
 o.description = font_red..bold_on..translate("Used for Downloading Subscriptions, Defaults to Clash")..bold_off..font_off
-o:value("Clash")
 o:value("clash.meta")
-o.default = "Clash"
+o:value("clash-verge/v1.5.1")
+o:value("Clash")
+o.default = "clash.meta"
 o.rmempty = true
 
 ---- subconverter
@@ -179,7 +180,7 @@ o:depends("sub_convert", "1")
 
 ---- custom params
 o = s:option(DynamicList, "custom_params", translate("Custom Params"))
-o.description = font_red..bold_on..translate("eg: \"rename=\\s+([2-9])[xX]@ (HIGH:$1)\"")..bold_off..font_off
+o.description = font_red..bold_on..translate("eg: \"rename=match@replace\" , \"rename=\\s+([2-9])[xX]@ (HIGH:$1)\"")..bold_off..font_off
 o.rmempty     = false
 o:depends("sub_convert", "1")
 

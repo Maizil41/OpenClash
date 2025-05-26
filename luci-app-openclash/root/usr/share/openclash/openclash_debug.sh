@@ -9,13 +9,22 @@ set_lock() {
 
 del_lock() {
    flock -u 885 2>/dev/null
-   rm -rf "/tmp/lock/openclash_debug.lock"
+   rm -rf "/tmp/lock/openclash_debug.lock" 2>/dev/null
 }
+
+ipk_v()
+{
+   if [ -x "/bin/opkg" ]; then
+      echo $(opkg status "$1" 2>/dev/null |grep 'Version' |awk -F ': ' '{print $2}' 2>/dev/null)
+   elif [ -x "/usr/bin/apk" ]; then
+      echo $(apk list "$1" 2>/dev/null |grep 'installed' | grep -oE '\d+(\.\d+)*' | head -1)
+   fi
+}
+
+set_lock
 
 DEBUG_LOG="/tmp/openclash_debug.log"
 LOGTIME=$(echo $(date "+%Y-%m-%d %H:%M:%S"))
-set_lock
-
 enable_custom_dns=$(uci -q get openclash.config.enable_custom_dns)
 rule_source=$(uci -q get openclash.config.rule_source)
 enable_custom_clash_rules=$(uci -q get openclash.config.enable_custom_clash_rules) 
@@ -31,11 +40,15 @@ en_mode=$(uci -q get openclash.config.en_mode)
 RAW_CONFIG_FILE=$(uci -q get openclash.config.config_path)
 CONFIG_FILE="/etc/openclash/$(uci -q get openclash.config.config_path |awk -F '/' '{print $5}' 2>/dev/null)"
 core_model=$(uci -q get openclash.config.core_version)
-cpu_model=$(opkg status libc 2>/dev/null |grep 'Architecture' |awk -F ': ' '{print $2}' 2>/dev/null)
+if [ -x "/bin/opkg" ]; then
+   cpu_model=$(opkg status libc 2>/dev/null |grep 'Architecture' |awk -F ': ' '{print $2}' 2>/dev/null)
+elif [ -x "/usr/bin/apk" ]; then
+   cpu_model=$(apk list libc 2>/dev/null|awk '{print $2}')
+fi
 core_meta_version=$(/etc/openclash/core/clash_meta -v 2>/dev/null |awk -F ' ' '{print $3}' |head -1 2>/dev/null)
 servers_update=$(uci -q get openclash.config.servers_update)
 mix_proxies=$(uci -q get openclash.config.mix_proxies)
-op_version=$(opkg status luci-app-openclash 2>/dev/null |grep 'Version' |awk -F 'Version: ' '{print "v"$2}')
+op_version=$(ipk_v "luci-app-openclash")
 china_ip_route=$(uci -q get openclash.config.china_ip_route)
 common_ports=$(uci -q get openclash.config.common_ports)
 router_self_proxy=$(uci -q get openclash.config.router_self_proxy)
@@ -44,9 +57,9 @@ da_password=$(uci -q get openclash.config.dashboard_password)
 cn_port=$(uci -q get openclash.config.cn_port)
 lan_interface_name=$(uci -q get openclash.config.lan_interface_name || echo "0")
 if [ "$lan_interface_name" = "0" ]; then
-   lan_ip=$(uci -q get network.lan.ipaddr |awk -F '/' '{print $1}' 2>/dev/null || ip address show $(uci -q -p /tmp/state get network.lan.ifname || uci -q -p /tmp/state get network.lan.device) | grep -w "inet"  2>/dev/null |grep -Eo 'inet [0-9\.]+' | awk '{print $2}' || ip addr show 2>/dev/null | grep -w 'inet' | grep 'global' | grep 'brd' | grep -Eo 'inet [0-9\.]+' | awk '{print $2}' | head -n 1)
+   lan_ip=$(uci -q get network.lan.ipaddr |awk -F '/' '{print $1}' 2>/dev/null || ip address show $(uci -q -p /tmp/state get network.lan.ifname || uci -q -p /tmp/state get network.lan.device) | grep -w "inet"  2>/dev/null |grep -Eo 'inet [0-9\.]+' | awk '{print $2}' |head -1 || ip addr show 2>/dev/null | grep -w 'inet' | grep 'global' | grep 'brd' | grep -Eo 'inet [0-9\.]+' | awk '{print $2}' | head -n 1)
 else
-   lan_ip=$(ip address show $(uci -q -p $lan_interface_name) | grep -w "inet"  2>/dev/null |grep -Eo 'inet [0-9\.]+' | awk '{print $2}')
+   lan_ip=$(ip address show $lan_interface_name | grep -w "inet"  2>/dev/null |grep -Eo 'inet [0-9\.]+' | awk '{print $2}' |head -1)
 fi
 dnsmasq_default_resolvfile=$(uci -q get openclash.config.default_resolvfile)
 
@@ -107,7 +120,7 @@ cat >> "$DEBUG_LOG" <<-EOF
 
 主机型号: $(cat /tmp/sysinfo/model 2>/dev/null)
 固件版本: $(cat /usr/lib/os-release 2>/dev/null |grep OPENWRT_RELEASE 2>/dev/null |awk -F '"' '{print $2}' 2>/dev/null)
-LuCI版本: $(opkg status luci 2>/dev/null |grep 'Version' |awk -F ': ' '{print $2}' 2>/dev/null)
+LuCI版本: $(ipk_v "luci")
 内核版本: $(uname -r 2>/dev/null)
 处理器架构: $cpu_model
 
@@ -123,36 +136,34 @@ cat >> "$DEBUG_LOG" <<-EOF
 
 #===================== 依赖检查 =====================#
 
-dnsmasq-full: $(ts_re "$(opkg status dnsmasq-full 2>/dev/null |grep 'Status' |awk -F ': ' '{print $2}' 2>/dev/null)")
-coreutils: $(ts_re "$(opkg status coreutils 2>/dev/null |grep 'Status' |awk -F ': ' '{print $2}' 2>/dev/null)")
-coreutils-nohup: $(ts_re "$(opkg status coreutils-nohup 2>/dev/null |grep 'Status' |awk -F ': ' '{print $2}' 2>/dev/null)")
-bash: $(ts_re "$(opkg status bash 2>/dev/null |grep 'Status' |awk -F ': ' '{print $2}' 2>/dev/null)")
-curl: $(ts_re "$(opkg status curl 2>/dev/null |grep 'Status' |awk -F ': ' '{print $2}' 2>/dev/null)")
-ca-certificates: $(ts_re "$(opkg status ca-certificates 2>/dev/null |grep 'Status' |awk -F ': ' '{print $2}' 2>/dev/null)")
-ipset: $(ts_re "$(opkg status ipset 2>/dev/null |grep 'Status' |awk -F ': ' '{print $2}' 2>/dev/null)")
-ip-full: $(ts_re "$(opkg status ip-full 2>/dev/null |grep 'Status' |awk -F ': ' '{print $2}' 2>/dev/null)")
-libcap: $(ts_re "$(opkg status libcap 2>/dev/null |grep 'Status' |awk -F ': ' '{print $2}' 2>/dev/null)")
-libcap-bin: $(ts_re "$(opkg status libcap-bin 2>/dev/null |grep 'Status' |awk -F ': ' '{print $2}' 2>/dev/null)")
-ruby: $(ts_re "$(opkg status ruby 2>/dev/null |grep 'Status' |awk -F ': ' '{print $2}' 2>/dev/null)")
-ruby-yaml: $(ts_re "$(opkg status ruby-yaml 2>/dev/null |grep 'Status' |awk -F ': ' '{print $2}' 2>/dev/null)")
-ruby-psych: $(ts_re "$(opkg status ruby-psych 2>/dev/null |grep 'Status' |awk -F ': ' '{print $2}' 2>/dev/null)")
-ruby-pstore: $(ts_re "$(opkg status ruby-pstore 2>/dev/null |grep 'Status' |awk -F ': ' '{print $2}' 2>/dev/null)")
-kmod-tun(TUN模式): $(ts_re "$(opkg status kmod-tun 2>/dev/null |grep 'Status' |awk -F ': ' '{print $2}' 2>/dev/null)")
-luci-compat(Luci >= 19.07): $(ts_re "$(opkg status luci-compat 2>/dev/null |grep 'Status' |awk -F ': ' '{print $2}' 2>/dev/null)")
-kmod-inet-diag(PROCESS-NAME): $(ts_re "$(opkg status kmod-inet-diag 2>/dev/null |grep 'Status' |awk -F ': ' '{print $2}' 2>/dev/null)")
-unzip: $(ts_re "$(opkg status unzip 2>/dev/null |grep 'Status' |awk -F ': ' '{print $2}' 2>/dev/null)")
+dnsmasq-full: $(ts_re "$(ipk_v "dnsmasq-full")")
+dnsmasq-full(ipset): $(ts_re "$(dnsmasq --version |grep -v no-ipset |grep ipset)")
+dnsmasq-full(nftset): $(ts_re "$(dnsmasq --version |grep nftset)")
+bash: $(ts_re "$(ipk_v "bash")")
+curl: $(ts_re "$(ipk_v "curl")")
+ca-bundle: $(ts_re "$(ipk_v "ca-bundle")")
+ipset: $(ts_re "$(ipk_v "ipset")")
+ip-full: $(ts_re "$(ipk_v "ip-full")")
+ruby: $(ts_re "$(ipk_v "ruby")")
+ruby-yaml: $(ts_re "$(ipk_v "ruby-yaml")")
+ruby-psych: $(ts_re "$(ipk_v "ruby-psych")")
+ruby-pstore: $(ts_re "$(ipk_v "ruby-pstore")")
+kmod-tun(TUN模式): $(ts_re "$(ipk_v "kmod-tun")")
+luci-compat(Luci >= 19.07): $(ts_re "$(ipk_v "luci-compat")")
+kmod-inet-diag(PROCESS-NAME): $(ts_re "$(ipk_v "kmod-inet-diag")")
+unzip: $(ts_re "$(ipk_v "unzip")")
 EOF
 if [ -n "$(command -v fw4)" ]; then
 cat >> "$DEBUG_LOG" <<-EOF
-kmod-nft-tproxy: $(ts_re "$(opkg status kmod-nft-tproxy 2>/dev/null |grep 'Status' |awk -F ': ' '{print $2}' 2>/dev/null)")
+kmod-nft-tproxy: $(ts_re "$(ipk_v kmod-nft-tproxy)")
 EOF
 else
 cat >> "$DEBUG_LOG" <<-EOF
-iptables-mod-tproxy: $(ts_re "$(opkg status iptables-mod-tproxy 2>/dev/null |grep 'Status' |awk -F ': ' '{print $2}' 2>/dev/null)")
-kmod-ipt-tproxy: $(ts_re "$(opkg status kmod-ipt-tproxy 2>/dev/null |grep 'Status' |awk -F ': ' '{print $2}' 2>/dev/null)")
-iptables-mod-extra: $(ts_re "$(opkg status iptables-mod-extra 2>/dev/null |grep 'Status' |awk -F ': ' '{print $2}' 2>/dev/null)")
-kmod-ipt-extra: $(ts_re "$(opkg status kmod-ipt-extra 2>/dev/null |grep 'Status' |awk -F ': ' '{print $2}' 2>/dev/null)")
-kmod-ipt-nat: $(ts_re "$(opkg status kmod-ipt-nat 2>/dev/null |grep 'Status' |awk -F ': ' '{print $2}' 2>/dev/null)")
+iptables-mod-tproxy: $(ts_re "$(ipk_v "iptables-mod-tproxy")")
+kmod-ipt-tproxy: $(ts_re "$(ipk_v "kmod-ipt-tproxy")")
+iptables-mod-extra: $(ts_re "$(ipk_v "iptables-mod-extra")")
+kmod-ipt-extra: $(ts_re "$(ipk_v "kmod-ipt-extra")")
+kmod-ipt-nat: $(ts_re "$(ipk_v "kmod-ipt-nat")")
 EOF
 fi
 
@@ -167,7 +178,6 @@ cat >> "$DEBUG_LOG" <<-EOF
 运行状态: 运行中
 运行内核：$core_type
 进程pid: $(pidof clash)
-运行权限: `getpcaps $(pidof clash)`
 运行用户: $(ps |grep "/etc/openclash/clash" |grep -v grep |awk '{print $2}' 2>/dev/null)
 EOF
 else
@@ -482,21 +492,10 @@ cat >> "$DEBUG_LOG" <<-EOF
 \`\`\`
 EOF
 
-wan_ip=$(/usr/share/openclash/openclash_get_network.lua "wanip")
-wan_ip6=$(/usr/share/openclash/openclash_get_network.lua "wanip6")
+sed -i -E 's/(([0-9]{1,3}\.){2})[0-9]{1,3}\.[0-9]{1,3}/\1*\.*/g' "$DEBUG_LOG" 2>/dev/null
 
-if [ -n "$wan_ip" ]; then
-	for i in $wan_ip; do
-      wanip=$(echo "$i" |awk -F '.' '{print $1"."$2"."$3}')
-      sed -i "s/${wanip}/*WAN IP*/g" "$DEBUG_LOG" 2>/dev/null
-  done
-fi
+sed -i -E 's/(:[0-9a-fA-F]{1,4}){3}/:*:*:*/' "$DEBUG_LOG" 2>/dev/null
 
-if [ -n "$wan_ip6" ]; then
-	for i in $wan_ip6; do
-      wanip=$(echo "$i" |awk -F: 'OFS=":",NF-=1')
-      sed -i "s/${wanip}/*WAN IP*/g" "$DEBUG_LOG" 2>/dev/null
-  done
-fi
+sed -i 's/Downloading URL【[^】]*】/Downloading URL【*】/g' "$DEBUG_LOG" 2>/dev/null
 
 del_lock
