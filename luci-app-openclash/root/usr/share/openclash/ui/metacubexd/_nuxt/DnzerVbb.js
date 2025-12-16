@@ -1,1 +1,0 @@
-import{St as e,W as t,Y as n,at as r,rt as i}from"./DxFRF32C.js";var a=n({__name:`ConfigTitle`,props:{withDivider:{type:Boolean}},setup(n){return(a,o)=>(i(),t(`div`,{class:e([`py-2 text-center text-lg font-semibold`,{divider:n.withDivider}])},[r(a.$slots,`default`)],2))}}),o=Object.assign(a,{__name:`ConfigTitle`});export{o as t};
