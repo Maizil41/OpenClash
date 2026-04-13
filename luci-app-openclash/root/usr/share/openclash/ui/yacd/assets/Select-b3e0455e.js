@@ -1,0 +1,1 @@
+import{j as s,k as a}from"./index-3aca34f8.js";const i="_select_1lwjy_1",m={select:i};function j({options:c,selected:t,onChange:l,className:n,...o}){return s("select",{className:a(m.select,n),value:t,onChange:l,...o,children:c.map(([e,r])=>s("option",{value:e,children:r},e))})}export{j as S};
